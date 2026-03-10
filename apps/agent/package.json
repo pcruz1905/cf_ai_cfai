@@ -1,5 +1,5 @@
 {
-  "name": "cfai-worker",
+  "name": "cfai-agent",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,8 +13,10 @@
     "test:workers": "vitest --project workers"
   },
   "dependencies": {
+    "agents": "^0.0.74",
     "effect": "catalog:",
-    "@effect/platform": "catalog:"
+    "@effect/platform": "catalog:",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.12.20",

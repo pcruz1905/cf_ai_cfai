@@ -1,10 +1,9 @@
 packages:
-  - "worker"
-  - "cli"
-  - "cli-tui"
+  - "apps/agent"
 
 catalog:
   '@cloudflare/workers-types': ^4.20250117.0
+  '@cloudflare/vitest-pool-workers': ^0.12.20
   '@effect/platform': ^0.93.4
   '@effect/vitest': ^0.27.0
   '@vitest/coverage-istanbul': ^3.2.4

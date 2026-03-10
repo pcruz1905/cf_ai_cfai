@@ -1,0 +1,39 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cfai-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-11-17",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "dev": {
+    "port": 8787
+  },
+
+  "observability": {
+    "enabled": true
+  },
+
+  "placement": { "mode": "smart" },
+
+  // ── Workers AI ─────────────────────────────────────────────────────────────
+  "ai": {
+    "binding": "AI"
+  },
+
+  // ── McpAgent Durable Object ────────────────────────────────────────────────
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CFAI_AGENT",
+        "class_name": "CfaiAgent"
+      }
+    ]
+  },
+
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["CfaiAgent"]
+    }
+  ]
+}
