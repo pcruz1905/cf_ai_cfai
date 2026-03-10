@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "types": ["@cloudflare/workers-types/2023-07-01"],
+    "noEmit": true,
+    "paths": {
+      "@testConfig/*": ["./testConfig/*"],
+      "@services/*": ["./src/services/*"],
+      "@utils/*": ["./src/utils/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "testConfig/**/*.ts"]
+}

@@ -1,0 +1,12 @@
+packages:
+  - "worker"
+  - "cli"
+  - "cli-tui"
+
+catalog:
+  '@cloudflare/workers-types': ^4.20250117.0
+  '@effect/platform': ^0.93.4
+  '@effect/vitest': ^0.27.0
+  '@vitest/coverage-istanbul': ^3.2.4
+  effect: ^3.19.8
+  vitest: 3.2.4

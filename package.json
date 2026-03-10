@@ -1,0 +1,20 @@
+{
+  "name": "cfai-monorepo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter cfai-worker dev",
+    "deploy": "pnpm --filter cfai-worker deploy",
+    "build": "pnpm --filter @sellhub/cli-tui build && pnpm --filter cfai build",
+    "build:worker": "pnpm --filter cfai-worker build",
+    "build:cli": "pnpm --filter @sellhub/cli-tui build && pnpm --filter cfai build",
+    "test": "pnpm --filter cfai-worker test",
+    "test:coverage": "pnpm --filter cfai-worker test -- --coverage",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "@vitest/coverage-istanbul": "catalog:",
+    "typescript": "^5.9.3",
+    "vitest": "catalog:"
+  }
+}
