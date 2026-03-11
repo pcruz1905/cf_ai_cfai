@@ -99,31 +99,146 @@ export class CfaiAgent extends McpAgent<Env, SessionState> {
     }
 
     // ══════════════════════════════════════════════════════════════════════
+    //  Help / Onboarding
+    // ══════════════════════════════════════════════════════════════════════
+
+    this.server.registerTool(
+      "help",
+      {
+        description:
+          "Show all available tools with descriptions and examples. Start here!",
+        inputSchema: {
+          category: z
+            .enum(["all", "ai", "gateway", "model"])
+            .optional()
+            .default("all")
+            .describe("Filter by category: all, ai, gateway, or model"),
+        },
+      },
+      async ({ category }) => {
+        track("help");
+
+        const sections: Record<string, string> = {
+          ai: `🤖 AI Tools (powered by Workers AI)
+  • ask_llm       — Ask anything (remembers last 20 messages)
+                    Example: ask_llm { "question": "What is a Durable Object?" }
+  • explain_error — Explain an error with suggested fixes
+                    Example: explain_error { "error": "TypeError: x is not a function" }
+  • summarize     — Summarize text/code/docs
+                    Example: summarize { "content": "...", "format": "bullets" }
+  • generate_commit — Commit message from a diff
+                    Example: generate_commit { "diff": "+ console.log('hi')" }
+  • translate     — Translate between languages
+                    Example: translate { "text": "Hello", "target": "Spanish" }
+  • review_code   — Code review for bugs, security, perf, style
+                    Example: review_code { "code": "...", "focus": "security" }`,
+
+          gateway: `🔌 Gateway (aggregate upstream MCP servers)
+  • add_server    — Connect a server by URL
+                    Example: add_server { "url": "https://mcp.example.com/sse", "name": "My Server" }
+  • remove_server — Disconnect and remove
+                    Example: remove_server { "id": "abc123" }
+  • list_servers  — Show all connected servers
+  • list_upstream_tools — List tools from all connected servers
+  • call_upstream_tool  — Call a tool on an upstream server
+                    Example: call_upstream_tool { "serverId": "abc123", "toolName": "list_repos" }`,
+
+          model: `⚙️ Model & Session
+  • set_model     — Switch Workers AI model
+                    Example: set_model { "model": "@cf/meta/llama-3.1-8b-instruct" }
+  • get_model     — Show current model
+  • session_stats — Usage stats, model, connected servers`,
+        };
+
+        const cats = category === "all" ? ["ai", "gateway", "model"] : [category!];
+        const text = cats.map((c) => sections[c]).join("\n\n");
+
+        return {
+          content: [{ type: "text" as const, text: `cfai — MCP Gateway\n\n${text}\n\nTip: Use add_server to plug in your existing MCP servers!` }],
+        };
+      },
+    );
+
+    // ══════════════════════════════════════════════════════════════════════
     //  MCP Server Management Tools
     // ══════════════════════════════════════════════════════════════════════
+
+    const PRESETS: Record<string, { url: string; name: string; description: string }> = {
+      github: {
+        url: "https://api.githubcopilot.com/mcp/",
+        name: "GitHub",
+        description: "GitHub Copilot MCP — repos, issues, PRs, code search",
+      },
+      // Add more presets here as the ecosystem grows
+    };
 
     this.server.registerTool(
       "add_server",
       {
         description:
-          "Connect an upstream MCP server by URL. Its tools become available via list_upstream_tools and call_upstream_tool.",
+          "Connect an upstream MCP server. Use a preset name (e.g. 'github') or provide a URL directly.",
         inputSchema: {
-          url: z.string().url().describe("The MCP server endpoint URL (SSE or Streamable HTTP)"),
+          url: z.string().optional().describe("The MCP server endpoint URL (SSE or Streamable HTTP)"),
+          preset: z
+            .string()
+            .optional()
+            .describe(`Preset name instead of URL. Available: ${Object.keys(PRESETS).join(", ")}`),
           name: z.string().optional().describe("A friendly name for this server"),
         },
       },
-      async ({ url, name }) => {
+      async ({ url, preset, name }) => {
         track("add_server");
-        try {
-          const { id } = await this.mcp.connect(url);
-          const label = name ?? new URL(url).hostname;
-          this.sql`INSERT OR REPLACE INTO mcp_servers (id, url, name) VALUES (${id}, ${url}, ${label})`;
+
+        let serverUrl: string;
+        let label: string;
+
+        if (preset) {
+          const p = PRESETS[preset.toLowerCase()];
+          if (!p) {
+            const available = Object.entries(PRESETS)
+              .map(([k, v]) => `  • ${k} — ${v.description}`)
+              .join("\n");
+            return {
+              content: [{ type: "text" as const, text: `Unknown preset "${preset}". Available presets:\n${available}` }],
+            };
+          }
+          serverUrl = p.url;
+          label = name ?? p.name;
+        } else if (url) {
+          serverUrl = url;
+          label = name ?? new URL(url).hostname;
+        } else {
           return {
-            content: [{ type: "text" as const, text: `✅ Connected to "${label}" (id: ${id})` }],
+            content: [{ type: "text" as const, text: "Provide either a 'url' or a 'preset' name. Use help { \"category\": \"gateway\" } for examples." }],
+          };
+        }
+
+        try {
+          const { id } = await this.mcp.connect(serverUrl);
+          this.sql`INSERT OR REPLACE INTO mcp_servers (id, url, name) VALUES (${id}, ${serverUrl}, ${label})`;
+
+          // Show the user what they just got
+          const conn = this.mcp.mcpConnections[id];
+          const tools = conn?.tools ?? [];
+          const toolList = tools.length > 0
+            ? tools.map((t) => `  • ${t.name}${t.description ? ` — ${t.description}` : ""}`).join("\n")
+            : "  (no tools discovered yet)";
+
+          return {
+            content: [{
+              type: "text" as const,
+              text: `✅ Connected to "${label}"\n` +
+                `   Server ID: ${id}\n\n` +
+                `Tools discovered (${tools.length}):\n${toolList}\n\n` +
+                `Use call_upstream_tool { "serverId": "${id}", "toolName": "..." } to invoke them.`,
+            }],
           };
         } catch (e) {
+          const hint = preset
+            ? ""
+            : "\n\nTip: Make sure the URL points to an MCP server's SSE or Streamable HTTP endpoint.";
           return {
-            content: [{ type: "text" as const, text: `❌ Failed to connect: ${String(e)}` }],
+            content: [{ type: "text" as const, text: `❌ Failed to connect to ${label}: ${String(e)}${hint}` }],
           };
         }
       },
