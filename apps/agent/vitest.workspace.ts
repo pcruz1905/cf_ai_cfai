@@ -24,7 +24,7 @@ export default [
         include: ["src/**/*.workers.test.ts"],
         poolOptions: {
           workers: {
-            wrangler: { configPath: "./wrangler.jsonc", environment: "local" },
+            wrangler: { configPath: "./wrangler.test.jsonc" },
             miniflare: {
               compatibilityDate: "2025-11-17",
               compatibilityFlags: ["nodejs_compat"],
