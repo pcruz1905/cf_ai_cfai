@@ -10,6 +10,9 @@ jobs:
     name: Typecheck, Test & Coverage
     runs-on: ubuntu-latest
 
+    env:
+      WRANGLER_DEV_LOCAL: true
+
     steps:
       - uses: actions/checkout@v4
 
@@ -32,7 +35,7 @@ jobs:
         run: pnpm --filter cfai-agent test:coverage
 
       - name: Workers integration tests
-        run: pnpm --filter cfai-agent test:workers -- --local
+        run: pnpm --filter cfai-agent test:workers
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4
