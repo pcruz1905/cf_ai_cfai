@@ -3,18 +3,18 @@
   "name": "cfai-worker",
   "main": "src/index.ts",
   "compatibility_date": "2025-11-17",
-  "compatibility_flags": ["nodejs_compat"],
-
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "dev": {
     "port": 8787
   },
-
   "observability": {
     "enabled": true
   },
-
-  "placement": { "mode": "smart" },
-
+  "placement": {
+    "mode": "smart"
+  },
   // ── Workers AI + AI Gateway (caching, rate-limiting, analytics) ───────────
   // Create the gateway at: dash.cloudflare.com → AI → AI Gateway → "cfai-gateway"
   "ai": {
@@ -25,7 +25,21 @@
       "cache_ttl": 3600
     }
   },
-
+  "env": {
+    "local": {
+      "ai": {
+        "binding": "AI"
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "CFAI_AGENT",
+            "class_name": "CfaiAgent"
+          }
+        ]
+      }
+    }
+  },
   // ── McpAgent Durable Object ────────────────────────────────────────────────
   "durable_objects": {
     "bindings": [
@@ -35,11 +49,12 @@
       }
     ]
   },
-
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["CfaiAgent"]
+      "new_sqlite_classes": [
+        "CfaiAgent"
+      ]
     }
   ]
 }

@@ -11,7 +11,7 @@
     "test": "vitest",
     "test:unit": "vitest --project unit",
     "test:workers": "vitest --project workers",
-    "test:coverage": "vitest run --coverage --project unit"
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@effect/platform": "catalog:",
