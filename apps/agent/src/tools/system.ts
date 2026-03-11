@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { Effect } from "effect";
-import { textContent, runTool } from "../index.js";
+import { textContent, runTool } from "../utils.js";
 import type { CfaiAgent } from "../index.js";
 
 export function registerSystemTools(agent: CfaiAgent) {

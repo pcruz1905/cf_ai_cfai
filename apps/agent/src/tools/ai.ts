@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import { runInference, type Message } from "../ai.js";
 import { PROMPTS } from "../prompts.js";
 import type { CfaiAgent } from "../index.js";
-import { textContent, runTool } from "../index.js";
+import { textContent, runTool } from "../utils.js";
 
 export function registerAiTools(agent: CfaiAgent) {
     agent.server.registerTool(

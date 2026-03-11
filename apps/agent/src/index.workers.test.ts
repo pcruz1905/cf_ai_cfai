@@ -247,6 +247,7 @@ describe("MCP tools execution", () => {
     // the stream is created, so a 200 here proves the tool was dispatched.
     expect(toolRes.status).toBe(200);
     expect(toolRes.headers.get("content-type")).toContain("text/event-stream");
+
     return toolRes;
   }
 

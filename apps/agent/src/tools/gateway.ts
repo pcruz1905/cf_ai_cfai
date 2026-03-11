@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { Effect } from "effect";
-import { connectServer, runTool, textContent } from "../index.js";
+import { textContent, runTool, connectServer } from "../utils.js";
 import type { CfaiAgent } from "../index.js";
 
 const PRESETS: Record<string, { url: string; name: string; description: string }> = {
