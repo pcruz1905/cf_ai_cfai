@@ -242,7 +242,7 @@ describe("gateway tools", () => {
             }),
             layers: Layer.empty,
             assert: (res) => {
-                expect(res.content[0]?.text).toContain("❌ Tool call failed");
+                expect(res.content[0]?.text).toContain("Tool call failed");
             },
         }),
 
