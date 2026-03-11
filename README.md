@@ -1,6 +1,6 @@
-# cf_ai_cfai
+# cfai — MCP Gateway on Cloudflare
 
-A remote MCP server on Cloudflare that gives your AI coding agent (Claude Code, Cursor, Windsurf) access to **Llama 3.3 70B** for nearly free — so it stops burning your expensive tokens on simple tasks.
+Your **single MCP server** that aggregates all your other MCP servers — so you connect once instead of 30 times. Powered by **Llama 3.3 70B** on Workers AI with switchable models.
 
 [![Deploy to Cloudflare](https://img.shields.io/badge/Deploy%20to-Cloudflare-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com)
 [![Built with Workers AI](https://img.shields.io/badge/Workers%20AI-Llama%203.3%2070B-F38020?logo=cloudflare&logoColor=white)](https://developers.cloudflare.com/workers-ai/)
@@ -9,15 +9,15 @@ A remote MCP server on Cloudflare that gives your AI coding agent (Claude Code, 
 
 ---
 
-## The Problem
+## Why?
 
-Claude Code and Cursor burn expensive tokens on tasks Llama 3.3 can handle just as well:
+**Problem:** You have 30 MCP servers. Each coding agent (Claude Code, Cursor, Windsurf) needs them all configured individually. And simple tasks like "explain this error" burn your expensive tokens.
 
-- "Explain this error" — ~2,000 tokens
-- "Summarize this file" — ~3,000 tokens
-- "Write a commit message" — ~1,500 tokens
+**Solution:** cfai is a single MCP gateway that:
 
-**cfai** offloads all of that to Workers AI. Your expensive model handles only the hard stuff.
+1. **Aggregates MCP servers** — plug in any number of upstream servers, their tools appear as your tools
+2. **Saves your tokens** — built-in AI tools offload simple tasks to Llama 3.3 (nearly free on Workers AI)
+3. **Lets you pick the model** — switch between any Workers AI model at runtime
 
 ---
 
@@ -28,76 +28,104 @@ Claude Code / Cursor / any MCP client
         │
         │  MCP over Streamable HTTP
         ▼
-Cloudflare Worker ──▶ AI Gateway (1h cache + analytics)
-        │                      │
-        ▼                      ▼
- McpAgent (Durable Object)  Llama 3.3 70B (Workers AI)
-   ├── SQLite: conversation history (last 20 msgs/session)
-   └── State: per-session tool usage stats
+  ┌─────────────────────────────────┐
+  │  cfai-agent (Durable Object)    │
+  │  ┌───────────┐  ┌────────────┐  │
+  │  │ Built-in  │  │  Gateway   │  │
+  │  │ AI Tools  │  │  Manager   │  │
+  │  └─────┬─────┘  └─────┬──────┘  │
+  │        │               │         │
+  │    Workers AI    MCP Server 1    │
+  │  (configurable   MCP Server 2    │
+  │    model)        MCP Server N    │
+  │                                  │
+  │  SQLite: messages, servers,      │
+  │          model prefs, stats      │
+  └──────────────────────────────────┘
 ```
 
 | Cloudflare Primitive | Role |
 |---|---|
-| **Workers AI** | Llama 3.3 70B with speculative decoding (2–4× faster) |
-| **McpAgent** | Durable Object that implements the MCP server protocol |
-| **DO SQLite** | Persistent conversation memory across requests |
+| **Workers AI** | Llama 3.3 70B (default) — switchable to any model |
+| **McpAgent** | Durable Object: MCP server + upstream client manager |
+| **DO SQLite** | Persistent conversation history, server registry, model preferences |
 | **AI Gateway** | Semantic caching (1h TTL), rate limiting, analytics |
-| **Smart Placement** | Worker auto-routes to the datacenter nearest the GPU |
+| **Smart Placement** | Auto-routes to the datacenter nearest the GPU |
 
 ---
 
 ## Tools
 
+### Built-in AI Tools
+
 | Tool | What it does |
 |---|---|
-| `ask_llm` | Ask anything — **remembers last 20 messages** per session for follow-ups |
+| `ask_llm` | Ask anything — **remembers last 20 messages** per session |
 | `explain_error` | Paste an error/stack trace, get a plain-English fix |
 | `summarize` | Summarize text/code/docs (bullets, paragraph, or TL;DR) |
 | `generate_commit` | Conventional commit message from a git diff |
 | `translate` | Translate between any languages |
 | `review_code` | Spot bugs, security issues, performance, and style problems |
-| `session_stats` | See tool call counts and conversation history size |
+
+### Gateway Management
+
+| Tool | What it does |
+|---|---|
+| `add_server` | Connect an upstream MCP server by URL |
+| `remove_server` | Disconnect and remove a server |
+| `list_servers` | Show all configured servers + connection status |
+| `list_upstream_tools` | List tools available across all connected servers |
+| `call_upstream_tool` | Proxy a tool call to an upstream server |
+
+### Model & Session
+
+| Tool | What it does |
+|---|---|
+| `set_model` | Switch Workers AI model (e.g. Llama 3.1 8B for speed) |
+| `get_model` | Show current model |
+| `session_stats` | Tool call counts, messages, connected servers, model |
 
 ---
 
 ## Quick Start
 
-### Use the deployed instance
+### 1. Connect
 
 ```bash
 claude mcp add cfai --transport http https://cfai-worker.<account>.workers.dev/mcp
 ```
 
-Then ask Claude Code to use it:
+### 2. Use built-in tools
 
 > "Use cfai to explain this error"
 > "Use ask_llm to summarize this file"
 
-### Conversation memory
-
-`ask_llm` persists history in SQLite inside the Durable Object. Each MCP session gets its own isolated history:
+### 3. Plug in your MCP servers
 
 ```
-→ ask_llm: "What is a Cloudflare Durable Object?"
-← cfai: "A Durable Object is a stateful serverless instance..."
+→ add_server: { "url": "https://my-github-mcp.example.com/sse", "name": "GitHub" }
+← ✅ Connected to "GitHub" (id: abc123)
 
-→ ask_llm: "How does its SQLite compare to KV?"   ← follows up automatically
-← cfai: "Compared to what I described, SQLite lets you..."
+→ list_upstream_tools
+← Available upstream tools (12):
+    • create_issue [abc123]
+    • list_repos [abc123]
+    ...
+
+→ call_upstream_tool: { "serverId": "abc123", "toolName": "list_repos", "args": {} }
+← [list of repos]
 ```
 
-Check usage anytime:
+Your server configs persist — they auto-reconnect on startup.
+
+### 4. Switch models
 
 ```
-→ session_stats
-← Session stats:
-     Total requests: 12
-     Conversation messages stored: 8
+→ set_model: { "model": "@cf/meta/llama-3.1-8b-instruct" }
+← Model set to: @cf/meta/llama-3.1-8b-instruct
 
-   By tool:
-     ask_llm: 6
-     explain_error: 3
-     summarize: 2
-     generate_commit: 1
+→ get_model
+← Current model: @cf/meta/llama-3.1-8b-instruct
 ```
 
 ---
@@ -147,12 +175,6 @@ claude mcp add cfai --transport http https://cfai-worker.<your-account>.workers.
 
 ---
 
-## AI Gateway Caching
-
-Responses are cached for **1 hour**. Identical requests return instantly with zero inference cost. View cache hit rates and latency in the [AI Gateway dashboard](https://dash.cloudflare.com/?to=/:account/ai/ai-gateway).
-
----
-
 ## CI / CD
 
 GitHub Actions typechecks every PR and deploys to Cloudflare on push to `main`.
@@ -166,11 +188,12 @@ Add `CLOUDFLARE_API_TOKEN` to repo Settings → Secrets → Actions.
 ```text
 apps/agent/
 ├── src/
-│   ├── index.ts     # CfaiAgent (McpAgent subclass) — tools + SQLite memory
-│   ├── ai.ts        # Effect-based Workers AI inference (typed errors, tracing)
+│   ├── index.ts     # CfaiAgent — gateway tools, server aggregation, model selection
+│   ├── ai.ts        # Effect-based inference with configurable model
 │   ├── errors.ts    # WorkersAiError via Effect Schema.TaggedError
 │   └── prompts.ts   # Specialized system prompts per tool
-└── wrangler.jsonc   # AI + AI Gateway binding, Durable Object, migrations
+├── wrangler.jsonc   # AI Gateway binding, Durable Object, migrations
+└── wrangler.test.jsonc  # Test config (no AI binding for CI)
 ```
 
 ---
@@ -179,8 +202,8 @@ apps/agent/
 
 - **[Cloudflare Workers](https://workers.cloudflare.com)** — globally distributed serverless runtime
 - **[Workers AI](https://developers.cloudflare.com/workers-ai/)** — Llama 3.3 70B inference, free tier available
-- **[Agents SDK](https://developers.cloudflare.com/agents/)** — `McpAgent` class handles MCP protocol
-- **[Durable Objects + SQLite](https://developers.cloudflare.com/durable-objects/)** — stateful session memory
+- **[Agents SDK](https://developers.cloudflare.com/agents/)** — `McpAgent` + `MCPClientManager` for server aggregation
+- **[Durable Objects + SQLite](https://developers.cloudflare.com/durable-objects/)** — stateful session memory + server registry
 - **[AI Gateway](https://developers.cloudflare.com/ai-gateway/)** — caching, rate limiting, analytics
 - **[Effect-TS](https://effect.website)** — typed errors and traced AI calls
 

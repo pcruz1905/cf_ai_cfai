@@ -2,7 +2,7 @@ import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Effect } from "effect";
 import { z } from "zod";
-import { runInference, type Message } from "./ai.js";
+import { runInference, DEFAULT_MODEL, type Message } from "./ai.js";
 import { WorkersAiError } from "./errors.js";
 import { PROMPTS } from "./prompts.js";
 
@@ -14,9 +14,11 @@ interface Env {
 interface SessionState {
   totalRequests: number;
   toolCounts: Record<string, number>;
+  selectedModel: string;
 }
 
 type DbMessage = { role: string; content: string };
+type DbServer = { id: string; url: string; name: string };
 
 /** Run an Effect and fall back to an error string — safe at the MCP boundary. */
 function runTool(
@@ -32,19 +34,32 @@ function runTool(
 }
 
 export class CfaiAgent extends McpAgent<Env, SessionState> {
-  override initialState: SessionState = { totalRequests: 0, toolCounts: {} };
+  override initialState: SessionState = {
+    totalRequests: 0,
+    toolCounts: {},
+    selectedModel: DEFAULT_MODEL,
+  };
   override server = new McpServer({ name: "cfai", version: "1.0.0" });
 
   override async init() {
     const ai = this.env.AI;
 
-    // ── Persistent conversation history (SQLite in Durable Object) ──────────
+    // ── Persistent tables (SQLite in Durable Object) ──────────────────────
     this.sql`
       CREATE TABLE IF NOT EXISTS messages (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
         role       TEXT    NOT NULL CHECK (role IN ('user', 'assistant')),
         content    TEXT    NOT NULL,
         created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      )
+    `;
+
+    this.sql`
+      CREATE TABLE IF NOT EXISTS mcp_servers (
+        id    TEXT PRIMARY KEY,
+        url   TEXT NOT NULL,
+        name  TEXT NOT NULL DEFAULT '',
+        added INTEGER NOT NULL DEFAULT (unixepoch())
       )
     `;
 
@@ -61,6 +76,7 @@ export class CfaiAgent extends McpAgent<Env, SessionState> {
 
     const track = (tool: string) => {
       this.setState({
+        ...this.state,
         totalRequests: this.state.totalRequests + 1,
         toolCounts: {
           ...this.state.toolCounts,
@@ -69,13 +85,210 @@ export class CfaiAgent extends McpAgent<Env, SessionState> {
       });
     };
 
-    // ── Tools ────────────────────────────────────────────────────────────────
+    /** Resolve the model to use for inference */
+    const model = () => this.state.selectedModel ?? DEFAULT_MODEL;
+
+    // ── Auto-reconnect saved MCP servers ──────────────────────────────────
+    const savedServers = this.sql<DbServer>`SELECT id, url, name FROM mcp_servers`;
+    for (const srv of savedServers) {
+      try {
+        await this.mcp.connect(srv.url);
+      } catch {
+        // Server might be offline — that's OK, user can retry later
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  MCP Server Management Tools
+    // ══════════════════════════════════════════════════════════════════════
+
+    this.server.registerTool(
+      "add_server",
+      {
+        description:
+          "Connect an upstream MCP server by URL. Its tools become available via list_upstream_tools and call_upstream_tool.",
+        inputSchema: {
+          url: z.string().url().describe("The MCP server endpoint URL (SSE or Streamable HTTP)"),
+          name: z.string().optional().describe("A friendly name for this server"),
+        },
+      },
+      async ({ url, name }) => {
+        track("add_server");
+        try {
+          const { id } = await this.mcp.connect(url);
+          const label = name ?? new URL(url).hostname;
+          this.sql`INSERT OR REPLACE INTO mcp_servers (id, url, name) VALUES (${id}, ${url}, ${label})`;
+          return {
+            content: [{ type: "text" as const, text: `✅ Connected to "${label}" (id: ${id})` }],
+          };
+        } catch (e) {
+          return {
+            content: [{ type: "text" as const, text: `❌ Failed to connect: ${String(e)}` }],
+          };
+        }
+      },
+    );
+
+    this.server.registerTool(
+      "remove_server",
+      {
+        description: "Disconnect and remove an upstream MCP server.",
+        inputSchema: {
+          id: z.string().describe("The server ID (from list_servers)"),
+        },
+      },
+      async ({ id }) => {
+        track("remove_server");
+        try {
+          await this.mcp.closeConnection(id);
+        } catch {
+          // Already disconnected
+        }
+        this.sql`DELETE FROM mcp_servers WHERE id = ${id}`;
+        return {
+          content: [{ type: "text" as const, text: `Removed server ${id}` }],
+        };
+      },
+    );
+
+    this.server.registerTool(
+      "list_servers",
+      {
+        description: "List all configured upstream MCP servers and their connection status.",
+      },
+      async () => {
+        track("list_servers");
+        const saved = this.sql<DbServer>`SELECT id, url, name FROM mcp_servers ORDER BY added`;
+        const connections = this.mcp.mcpConnections;
+
+        if (saved.length === 0) {
+          return {
+            content: [{ type: "text" as const, text: "No upstream servers configured. Use add_server to connect one." }],
+          };
+        }
+
+        const lines = saved.map((s) => {
+          const conn = connections[s.id];
+          const status = conn?.connectionState ?? "disconnected";
+          const toolCount = conn?.tools?.length ?? 0;
+          return `• ${s.name || s.url} (${status}, ${toolCount} tools)\n  id: ${s.id}\n  url: ${s.url}`;
+        });
+
+        return {
+          content: [{ type: "text" as const, text: `Upstream servers:\n\n${lines.join("\n\n")}` }],
+        };
+      },
+    );
+
+    this.server.registerTool(
+      "list_upstream_tools",
+      {
+        description: "List all tools available across connected upstream MCP servers.",
+      },
+      async () => {
+        track("list_upstream_tools");
+        const tools = this.mcp.listTools();
+
+        if (tools.length === 0) {
+          return {
+            content: [{ type: "text" as const, text: "No upstream tools available. Connect a server first with add_server." }],
+          };
+        }
+
+        const lines = tools.map(
+          (t) => `• ${t.name} [${t.serverId}]\n  ${t.description ?? "(no description)"}`,
+        );
+
+        return {
+          content: [{ type: "text" as const, text: `Available upstream tools (${tools.length}):\n\n${lines.join("\n\n")}` }],
+        };
+      },
+    );
+
+    this.server.registerTool(
+      "call_upstream_tool",
+      {
+        description:
+          "Call a tool on a connected upstream MCP server. Use list_upstream_tools to find available tools.",
+        inputSchema: {
+          serverId: z.string().describe("The server ID that provides the tool"),
+          toolName: z.string().describe("The name of the tool to call"),
+          args: z
+            .record(z.unknown())
+            .optional()
+            .default({})
+            .describe("Arguments to pass to the tool (JSON object)"),
+        },
+      },
+      async ({ serverId, toolName, args }) => {
+        track("call_upstream_tool");
+        try {
+          const result = await this.mcp.callTool({
+            serverId,
+            name: toolName,
+            arguments: args,
+          });
+          return {
+            content: (result.content as Array<{ type: "text"; text: string }>) ?? [
+              { type: "text" as const, text: JSON.stringify(result) },
+            ],
+          };
+        } catch (e) {
+          return {
+            content: [{ type: "text" as const, text: `❌ Tool call failed: ${String(e)}` }],
+          };
+        }
+      },
+    );
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  Model Selection Tools
+    // ══════════════════════════════════════════════════════════════════════
+
+    this.server.registerTool(
+      "set_model",
+      {
+        description:
+          "Change the Workers AI model used for inference. Default is Llama 3.3 70B.",
+        inputSchema: {
+          model: z
+            .string()
+            .describe(
+              "Workers AI model identifier, e.g. '@cf/meta/llama-3.3-70b-instruct-fp8-fast' or '@cf/meta/llama-3.1-8b-instruct'",
+            ),
+        },
+      },
+      async ({ model: newModel }) => {
+        track("set_model");
+        this.setState({ ...this.state, selectedModel: newModel });
+        return {
+          content: [{ type: "text" as const, text: `Model set to: ${newModel}` }],
+        };
+      },
+    );
+
+    this.server.registerTool(
+      "get_model",
+      {
+        description: "Show the currently selected Workers AI model.",
+      },
+      async () => {
+        track("get_model");
+        return {
+          content: [{ type: "text" as const, text: `Current model: ${model()}` }],
+        };
+      },
+    );
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  Built-in AI Tools
+    // ══════════════════════════════════════════════════════════════════════
 
     this.server.registerTool(
       "ask_llm",
       {
         description:
-          "Ask Llama 3.3 anything. Remembers the last 20 messages per session — supports follow-up questions, brainstorming, and explanations. Saves your expensive tokens.",
+          "Ask the LLM anything. Remembers the last 20 messages per session — supports follow-up questions, brainstorming, and explanations.",
         inputSchema: {
           question: z.string().describe("The question or prompt to answer"),
         },
@@ -90,7 +303,7 @@ export class CfaiAgent extends McpAgent<Env, SessionState> {
           ...history,
           { role: "user", content: question },
         ];
-        const text = await runTool(runInference(ai, messages));
+        const text = await runTool(runInference(ai, messages, model()));
         saveMessage("assistant", text);
         return { content: [{ type: "text" as const, text }] };
       },
@@ -118,7 +331,7 @@ export class CfaiAgent extends McpAgent<Env, SessionState> {
           { role: "system", content: PROMPTS.explainError },
           { role: "user", content: user },
         ];
-        const text = await runTool(runInference(ai, messages));
+        const text = await runTool(runInference(ai, messages, model()));
         return { content: [{ type: "text" as const, text }] };
       },
     );
@@ -143,7 +356,7 @@ export class CfaiAgent extends McpAgent<Env, SessionState> {
           { role: "system", content: PROMPTS.summarize(format ?? "bullets") },
           { role: "user", content },
         ];
-        const text = await runTool(runInference(ai, messages));
+        const text = await runTool(runInference(ai, messages, model()));
         return { content: [{ type: "text" as const, text }] };
       },
     );
@@ -165,7 +378,7 @@ export class CfaiAgent extends McpAgent<Env, SessionState> {
           { role: "system", content: PROMPTS.generateCommit },
           { role: "user", content: diff },
         ];
-        const text = await runTool(runInference(ai, messages));
+        const text = await runTool(runInference(ai, messages, model()));
         return { content: [{ type: "text" as const, text }] };
       },
     );
@@ -196,7 +409,7 @@ export class CfaiAgent extends McpAgent<Env, SessionState> {
           { role: "system", content: PROMPTS.translate },
           { role: "user", content: user },
         ];
-        const result = await runTool(runInference(ai, messages));
+        const result = await runTool(runInference(ai, messages, model()));
         return { content: [{ type: "text" as const, text: result }] };
       },
     );
@@ -227,7 +440,7 @@ export class CfaiAgent extends McpAgent<Env, SessionState> {
           { role: "system", content: PROMPTS.reviewCode },
           { role: "user", content: user },
         ];
-        const text = await runTool(runInference(ai, messages));
+        const text = await runTool(runInference(ai, messages, model()));
         return { content: [{ type: "text" as const, text }] };
       },
     );
@@ -236,7 +449,7 @@ export class CfaiAgent extends McpAgent<Env, SessionState> {
       "session_stats",
       {
         description:
-          "Returns usage statistics for this session — tool call counts and conversation history size.",
+          "Returns usage statistics for this session — tool call counts, conversation size, model, and connected servers.",
       },
       async () => {
         const counts = Object.entries(this.state.toolCounts)
@@ -248,10 +461,16 @@ export class CfaiAgent extends McpAgent<Env, SessionState> {
           SELECT COUNT(*) as count FROM messages
         `;
 
+        const servers = this.sql<DbServer>`SELECT id, url, name FROM mcp_servers`;
+        const upstreamTools = this.mcp.listTools();
+
         const text =
           `Session stats:\n` +
+          `  Model: ${model()}\n` +
           `  Total requests: ${this.state.totalRequests}\n` +
           `  Conversation messages stored: ${row?.count ?? 0}\n` +
+          `  Upstream servers: ${servers.length}\n` +
+          `  Upstream tools available: ${upstreamTools.length}\n` +
           (counts ? `\nBy tool:\n${counts}` : "");
 
         return { content: [{ type: "text" as const, text }] };

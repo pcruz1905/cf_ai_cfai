@@ -288,4 +288,25 @@ describe("MCP tools execution", () => {
   it("calls session_stats successfully", async () => {
     await initAndCallTool("session_stats");
   });
+
+  // ── Gateway Management Tools ──────────────────────────────────────────
+
+  it("calls list_servers successfully (empty list)", async () => {
+    await initAndCallTool("list_servers");
+  });
+
+  it("calls list_upstream_tools successfully (empty)", async () => {
+    await initAndCallTool("list_upstream_tools");
+  });
+
+  it("calls set_model successfully", async () => {
+    await initAndCallTool("set_model", {
+      model: "@cf/meta/llama-3.1-8b-instruct",
+    });
+  });
+
+  it("calls get_model successfully", async () => {
+    await initAndCallTool("get_model");
+  });
 });
+

@@ -60,5 +60,19 @@ describe("runInference", () => {
         expect(e.message).toContain("network error");
       },
     }),
+
+    success({
+      description: "passes custom model to ai.run when provided",
+      effect: runInference(
+        {
+          run: async (model: string) => ({ response: `used:${model}` }),
+        } as unknown as Ai,
+        msg,
+        "@cf/meta/llama-3.1-8b-instruct",
+      ),
+      layers: Layer.empty,
+      assert: (r) =>
+        expect(r).toBe("used:@cf/meta/llama-3.1-8b-instruct"),
+    }),
   ]);
 });
