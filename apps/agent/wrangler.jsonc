@@ -18,12 +18,7 @@
   // ── Workers AI + AI Gateway (caching, rate-limiting, analytics) ───────────
   // Create the gateway at: dash.cloudflare.com → AI → AI Gateway → "cfai-gateway"
   "ai": {
-    "binding": "AI",
-    "gateway": {
-      "id": "cfai-gateway",
-      "skip_cache": false,
-      "cache_ttl": 3600
-    }
+    "binding": "AI"
   },
   "env": {
     "local": {

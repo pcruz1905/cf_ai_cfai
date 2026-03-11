@@ -12,16 +12,51 @@ export class MockAgent {
     servers: DbServer[] = [];
     tracked: string[] = [];
     broadcasted: any[] = [];
+    websockets: any[] = [];
+    callTimestamps: number[] = [];
 
     aiResponse: string | (() => string) = "mock ai response";
 
+    // mock context/env
+    ctx = {
+        getWebSockets: () => this.websockets,
+        waitUntil: (p: Promise<any>) => p,
+        acceptWebSocket: () => {
+            const ws = {} as any; // Simple mock WS
+            this.websockets.push(ws);
+            return ws;
+        }
+    };
+
+    env = {
+        AI: { run: () => this.ai.run() } as any,
+        CFAI_AGENT: {
+            idFromName: (name: string) => ({ toString: () => `id-${name}` }),
+            get: (id: any) => ({ fetch: (req: any) => new Response("ok") }),
+        } as any
+    };
+
     // mock mcp connections
     mcp = {
-        mcpConnections: {} as Record<string, any>,
-        listTools: () => [] as (Tool & { serverId?: string })[],
+        mcpConnections: {} as Record<string, { tools: any[]; connectionState?: string }>,
+        listTools: () => {
+            const all: (Tool & { serverId?: string })[] = [];
+            for (const [id, conn] of Object.entries(this.mcp.mcpConnections)) {
+                for (const t of conn.tools) {
+                    all.push({ ...t, serverId: id });
+                }
+            }
+            return all;
+        },
         callTool: async () => ({ content: [{ type: "text", text: "mock upstream result" }] }),
-        connect: async (url: string) => ({ id: "mock-id", authUrl: undefined }),
-        closeConnection: async (id: string) => { },
+        connect: async (url: string) => {
+            const id = `mock-id-${url}`;
+            if (!this.mcp.mcpConnections[id]) {
+                this.mcp.mcpConnections[id] = { tools: [], connectionState: "connected" };
+            }
+            return { id, authUrl: undefined };
+        },
+        closeConnection: async (id: string) => { delete this.mcp.mcpConnections[id]; },
     };
 
     server = {
@@ -35,12 +70,39 @@ export class MockAgent {
         aiManager: null as any
     };
 
+    sql<T>(strings: TemplateStringsArray, ...values: any[]): T[] {
+        const query = strings.join("?");
+        if (query.includes("COUNT(*)")) return [{ count: this.history.length }] as any;
+        if (query.includes("mcp_servers")) {
+            if (query.includes("DELETE")) {
+                const id = values[0];
+                this.servers = this.servers.filter(s => s.id !== id);
+                return [] as any;
+            }
+            if (query.includes("INSERT")) {
+                const [id, url, name] = values;
+                this.saveServer(id, url, name);
+                return [] as any;
+            }
+            return this.servers as any;
+        }
+        if (query.includes("INSERT INTO messages")) {
+            const [role, content] = values;
+            this.saveMessage(role, content);
+            return [] as any;
+        }
+        if (query.includes("SELECT role, content FROM messages")) {
+            return this.history.map(m => ({ role: m.role, content: m.content })) as any;
+        }
+        return [] as any;
+    }
+
     model() { return this.state.selectedModel; }
     setState(s: any) { this.state = s; }
 
     loadHistory() { return [...this.history]; }
     saveMessage(role: MessageRole, content: string) {
-        this.history.push({ role, content });
+        this.history.push({ role: role as any, content });
     }
 
     getServers() { return [...this.servers]; }
@@ -57,14 +119,33 @@ export class MockAgent {
     getTotalRequests() { return this.totalRequests; }
     getMessageCount() { return this.history.length; }
 
+    broadcast(data: Record<string, unknown>) {
+        this.broadcasted.push(data);
+        const msg = JSON.stringify(data);
+        for (const ws of this.ctx.getWebSockets()) {
+            try { ws.send(msg); } catch { /* client gone */ }
+        }
+    }
+
     track(tool: string) {
+        const now = Date.now();
+        this.callTimestamps = this.callTimestamps.filter((t) => now - t < 60_000);
+        if (this.callTimestamps.length >= 60) {
+            throw new Error(`Rate limit exceeded: max 60 tool calls per minute. Try again shortly.`);
+        }
+        this.callTimestamps.push(now);
+
         this.tracked.push(tool);
         this.totalRequests++;
         this.toolCounts[tool] = (this.toolCounts[tool] ?? 0) + 1;
     }
 
-    broadcast(data: any) {
-        this.broadcasted.push(data);
+    async init() {
+        // Mock init behavior
+        const saved = this.getServers();
+        for (const srv of saved) {
+            await this.mcp.connect(srv.url);
+        }
     }
 
     asAgent() {

@@ -1,8 +1,8 @@
 import { describe, expect } from "vitest";
-import { Layer } from "effect";
+import { Effect, Layer } from "effect";
 import { makeTests, success, failure } from "@testConfig/test-helpers";
-import { runInference } from "./ai";
-import type { Message } from "./ai";
+import { runInference, DEFAULT_MODEL } from "./ai.js";
+import type { Message } from "./ai.js";
 
 const msg: Message[] = [{ role: "user", content: "hello" }];
 
@@ -74,6 +74,52 @@ describe("runInference", () => {
       layers: Layer.empty,
       assert: (r) =>
         expect(r).toBe("used:@cf/meta/llama-3.1-8b-instruct"),
+    }),
+    success({
+      description: "tries fallback model when primary fails",
+      effect: Effect.gen(function* () {
+        let calls = 0;
+        const ai: Ai = {
+          run: async (model: string) => {
+            calls++;
+            if (model === DEFAULT_MODEL) throw new Error("primary failed");
+            return { response: "fallback success" };
+          },
+          aiManager: null as any
+        } as any as Ai;
+        const res = yield* runInference(ai, msg);
+        return { res, calls };
+      }),
+      layers: Layer.empty,
+      assert: (value) => {
+        const { res, calls } = value as { res: string; calls: number };
+        expect(res).toBe("fallback success");
+        expect(calls).toBe(2);
+      },
+    }),
+
+    failure({
+      description: "fails when all models return empty response",
+      effect: runInference(mockAi({ response: "" }), msg),
+      layers: Layer.empty,
+      assert: (e: any) => {
+        expect(e.message).toContain("empty response");
+      },
+    }),
+
+    failure({
+      description: "fails when everything fails",
+      effect: Effect.gen(function* () {
+        const ai: Ai = {
+          run: async () => { throw new Error("hard fail"); },
+          aiManager: null as any
+        } as any as Ai;
+        return yield* runInference(ai, msg);
+      }),
+      layers: Layer.empty,
+      assert: (e: any) => {
+        expect(e.message).toContain("hard fail");
+      },
     }),
   ]);
 });

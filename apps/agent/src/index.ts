@@ -143,7 +143,7 @@ export class CfaiAgent extends McpAgent<Env, SessionState> {
     for (const srv of savedServers) {
       await Effect.runPromise(
         connectServer(this.mcp, srv.url).pipe(
-          Effect.catchAll(() => Effect.succeed(undefined)),
+          Effect.catchAll(() => Effect.void),
         ),
       );
     }

@@ -134,7 +134,7 @@ export function registerSystemTools(agent: CfaiAgent) {
                 );
             });
 
-            agent.track("session_stats"); // Forgot to track this before, doing it now!
+            agent.track("session_stats");
             const text = await runTool(stats());
             return textContent(text);
         },

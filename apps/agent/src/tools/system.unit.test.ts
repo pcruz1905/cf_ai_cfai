@@ -126,5 +126,31 @@ describe("system tools", () => {
                 expect(text).toContain("session_stats: 1");
             },
         }),
+
+        success({
+            description: "calls session_stats with zero tool usage",
+            effect: Effect.gen(function* () {
+                const mock = setup();
+                mock.toolCounts = {};
+                mock.totalRequests = 1;
+                // Force empty tool counts to trigger branch in system.ts
+                mock.getToolCounts = () => ({});
+                mock.state.selectedModel = "stats-model";
+                mock.history = [];
+                mock.servers = [];
+
+                const res = yield* Effect.tryPromise(() =>
+                    mock.callHandler("session_stats"),
+                );
+                return res;
+            }),
+            layers: Layer.empty,
+            assert: (res: any) => {
+                const text = res.content[0].text;
+                // Total is 2: 1 initial state (mock.totalRequests = 1) + 1 from tracking session_stats call itself
+                expect(text).toContain("Total requests: 2");
+                expect(text).not.toContain("By tool:");
+            },
+        }),
     ]);
 });

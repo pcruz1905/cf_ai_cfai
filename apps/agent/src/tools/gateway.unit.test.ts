@@ -245,5 +245,87 @@ describe("gateway tools", () => {
                 expect(res.content[0].text).toContain("❌ Tool call failed");
             },
         }),
+
+        success({
+            description: "add_server discovery with tools",
+            effect: Effect.gen(function* () {
+                const mock = setup();
+                const url = "http://tools.com/sse";
+                // Pre-populate tools for this URL
+                mock.mcp.mcpConnections[`mock-id-${url}`] = {
+                    tools: [
+                        { name: "tool1", description: "desc1" },
+                        { name: "tool2" }
+                    ]
+                };
+                const res = yield* Effect.tryPromise(() =>
+                    mock.callHandler("add_server", { url, name: "ToolsServer" }),
+                );
+                return res;
+            }),
+            layers: Layer.empty,
+            assert: (res: any) => {
+                const text = res.content[0].text;
+                expect(text).toContain("Tools discovered (2)");
+                expect(text).toContain("• tool1 — desc1");
+                expect(text).toContain("• tool2");
+            },
+        }),
+
+        success({
+            description: "gateway tools branch edge cases",
+            effect: Effect.gen(function* () {
+                const mock = setup();
+                const serverId = "edge-server";
+
+                // 1. list_servers with default name (no name in DB)
+                mock.saveServer(serverId, "http://edge.com", "");
+                const listRes = yield* Effect.tryPromise(() => mock.callHandler("list_servers"));
+
+                // 2. list_upstream_tools with no description
+                mock.mcp.listTools = () => [
+                    { name: "silent-tool", serverId, description: undefined, inputSchema: { type: "object" } } as any
+                ];
+                const toolListRes = yield* Effect.tryPromise(() => mock.callHandler("list_upstream_tools"));
+
+                // 3. call_upstream_tool with non-array content
+                mock.mcp.callTool = async () => ({ raw: "data" } as any);
+                const callRes = yield* Effect.tryPromise(() =>
+                    mock.callHandler("call_upstream_tool", { serverId, toolName: "silent-tool" })
+                );
+
+                return { listRes, toolListRes, callRes };
+            }),
+            layers: Layer.empty,
+            assert: (value: any) => {
+                const { listRes, toolListRes, callRes } = value as { listRes: any; toolListRes: any; callRes: any };
+                expect(listRes.content[0].text).toContain("http://edge.com");
+                expect(toolListRes.content[0].text).toContain("(no description)");
+                expect(callRes.content[0].text).toContain('{"raw":"data"}');
+            },
+        }),
+
+        success({
+            description: "add_server where connection disappears (edge case)",
+            effect: Effect.gen(function* () {
+                const mock = setup();
+                const url = "http://ghost.com";
+                // Mock connect to return an ID but NOT populate mcpConnections
+                mock.mcp.connect = async () => ({ id: "ghost-id", authUrl: undefined });
+                // Ensure it's NOT there
+                delete mock.mcp.mcpConnections["ghost-id"];
+
+                const res = yield* Effect.tryPromise(() =>
+                    mock.callHandler("add_server", { url })
+                );
+                return res;
+            }),
+            layers: Layer.empty,
+            assert: (res: any) => {
+                const text = res.content[0].text;
+                expect(text).toContain("Tools discovered (0)");
+                expect(text).toContain("  (no tools discovered yet)");
+            },
+        }),
     ]);
 });
