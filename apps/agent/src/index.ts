@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Effect } from "effect";
 import { z } from "zod";
 import { runInference, DEFAULT_MODEL, type Message } from "./ai.js";
-import { WorkersAiError } from "./errors.js";
+import { McpGatewayError } from "./errors.js";
 import { PROMPTS } from "./prompts.js";
 
 interface Env {
@@ -21,8 +21,8 @@ type DbMessage = { role: string; content: string };
 type DbServer = { id: string; url: string; name: string };
 
 /** Run an Effect and fall back to an error string — safe at the MCP boundary. */
-function runTool(
-  effect: Effect.Effect<string, WorkersAiError>,
+function runTool<E extends { message: string }>(
+  effect: Effect.Effect<string, E>,
 ): Promise<string> {
   return Effect.runPromise(
     effect.pipe(
@@ -32,6 +32,19 @@ function runTool(
     ),
   );
 }
+
+/** Connect to an upstream MCP server — Effect-based with typed errors. */
+const connectServer = Effect.fn("CfaiAgent.connectServer")(function* (
+  mcp: { connect: (url: string, opts?: object) => Promise<{ id: string; authUrl: string | undefined }> },
+  url: string,
+) {
+  const result = yield* Effect.tryPromise({
+    try: () => mcp.connect(url),
+    catch: (e) =>
+      new McpGatewayError({ message: `Failed to connect to ${url}: ${String(e)}` }),
+  });
+  return result;
+});
 
 export class CfaiAgent extends McpAgent<Env, SessionState> {
   override initialState: SessionState = {
@@ -91,11 +104,11 @@ export class CfaiAgent extends McpAgent<Env, SessionState> {
     // ── Auto-reconnect saved MCP servers ──────────────────────────────────
     const savedServers = this.sql<DbServer>`SELECT id, url, name FROM mcp_servers`;
     for (const srv of savedServers) {
-      try {
-        await this.mcp.connect(srv.url);
-      } catch {
-        // Server might be offline — that's OK, user can retry later
-      }
+      await Effect.runPromise(
+        connectServer(this.mcp, srv.url).pipe(
+          Effect.catchAll(() => Effect.succeed(undefined)),
+        ),
+      );
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -188,6 +201,7 @@ export class CfaiAgent extends McpAgent<Env, SessionState> {
       },
       async ({ url, preset, name }) => {
         track("add_server");
+        const agent = this; // capture for Effect.gen
 
         let serverUrl: string;
         let label: string;
@@ -213,34 +227,27 @@ export class CfaiAgent extends McpAgent<Env, SessionState> {
           };
         }
 
-        try {
-          const { id } = await this.mcp.connect(serverUrl);
-          this.sql`INSERT OR REPLACE INTO mcp_servers (id, url, name) VALUES (${id}, ${serverUrl}, ${label})`;
+        const text = await runTool(
+          Effect.gen(function* () {
+            const { id } = yield* connectServer(agent.mcp, serverUrl);
+            agent.sql`INSERT OR REPLACE INTO mcp_servers (id, url, name) VALUES (${id}, ${serverUrl}, ${label})`;
 
-          // Show the user what they just got
-          const conn = this.mcp.mcpConnections[id];
-          const tools = conn?.tools ?? [];
-          const toolList = tools.length > 0
-            ? tools.map((t) => `  • ${t.name}${t.description ? ` — ${t.description}` : ""}`).join("\n")
-            : "  (no tools discovered yet)";
+            // Show the user what they just got
+            const conn = agent.mcp.mcpConnections[id];
+            const tools = conn?.tools ?? [];
+            const toolList = tools.length > 0
+              ? tools.map((t: { name: string; description?: string }) => `  • ${t.name}${t.description ? ` — ${t.description}` : ""}`).join("\n")
+              : "  (no tools discovered yet)";
 
-          return {
-            content: [{
-              type: "text" as const,
-              text: `✅ Connected to "${label}"\n` +
-                `   Server ID: ${id}\n\n` +
-                `Tools discovered (${tools.length}):\n${toolList}\n\n` +
-                `Use call_upstream_tool { "serverId": "${id}", "toolName": "..." } to invoke them.`,
-            }],
-          };
-        } catch (e) {
-          const hint = preset
-            ? ""
-            : "\n\nTip: Make sure the URL points to an MCP server's SSE or Streamable HTTP endpoint.";
-          return {
-            content: [{ type: "text" as const, text: `❌ Failed to connect to ${label}: ${String(e)}${hint}` }],
-          };
-        }
+            return (
+              `✅ Connected to "${label}"\n` +
+              `   Server ID: ${id}\n\n` +
+              `Tools discovered (${tools.length}):\n${toolList}\n\n` +
+              `Use call_upstream_tool { "serverId": "${id}", "toolName": "..." } to invoke them.`
+            );
+          }),
+        );
+        return { content: [{ type: "text" as const, text }] };
       },
     );
 

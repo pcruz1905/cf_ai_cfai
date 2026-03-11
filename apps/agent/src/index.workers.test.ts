@@ -308,5 +308,28 @@ describe("MCP tools execution", () => {
   it("calls get_model successfully", async () => {
     await initAndCallTool("get_model");
   });
-});
 
+  // ── Help & Onboarding ─────────────────────────────────────────────────
+
+  it("calls help with default 'all' category", async () => {
+    await initAndCallTool("help");
+  });
+
+  it("calls help filtered to 'gateway' category", async () => {
+    await initAndCallTool("help", { category: "gateway" });
+  });
+
+  it("calls help filtered to 'model' category", async () => {
+    await initAndCallTool("help", { category: "model" });
+  });
+
+  // ── Edge cases ────────────────────────────────────────────────────────
+
+  it("calls add_server with no params (returns guidance)", async () => {
+    await initAndCallTool("add_server", {});
+  });
+
+  it("calls remove_server with nonexistent id (no crash)", async () => {
+    await initAndCallTool("remove_server", { id: "nonexistent-id" });
+  });
+});
