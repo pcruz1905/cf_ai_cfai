@@ -1,9 +1,17 @@
+import { vi } from "vitest";
 import { type Message } from "../src/ai.js";
 import type { CfaiAgent, MessageRole, DbServer } from "../src/index.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
+interface ToolHandlerResult {
+    content: Array<{ type: "text"; text: string }>;
+    isError?: boolean;
+}
+
+type ToolHandler = (args: Record<string, unknown>) => Promise<ToolHandlerResult>;
+
 export class MockAgent {
-    tools = new Map<string, { schema: any; handler: (args: any) => Promise<any> }>();
+    tools = new Map<string, { schema: Tool["inputSchema"]; handler: ToolHandler }>();
 
     state = { selectedModel: "default-model" };
     history: Message[] = [];
@@ -11,29 +19,34 @@ export class MockAgent {
     totalRequests = 0;
     servers: DbServer[] = [];
     tracked: string[] = [];
-    broadcasted: any[] = [];
-    websockets: any[] = [];
+    broadcasted: Record<string, unknown>[] = [];
+    websockets: { send: (msg: string) => void; close: (code: number, reason: string) => void }[] = [];
     callTimestamps: number[] = [];
 
     aiResponse: string | (() => string) = "mock ai response";
 
     // mock context/env
     ctx = {
-        getWebSockets: () => this.websockets,
-        waitUntil: (p: Promise<any>) => p,
+        getWebSockets: () => this.websockets as unknown as WebSocket[],
+        waitUntil: (p: Promise<unknown>) => p,
         acceptWebSocket: () => {
-            const ws = {} as any; // Simple mock WS
-            this.websockets.push(ws);
+            const ws = {
+                send: vi.fn(),
+                close: vi.fn(),
+                addEventListener: vi.fn(),
+                removeEventListener: vi.fn(),
+            } as unknown as WebSocket;
+            this.websockets.push(ws as any);
             return ws;
         }
     };
 
     env = {
-        AI: { run: () => this.ai.run() } as any,
+        AI: { run: () => this.ai.run() } as unknown as Ai,
         CFAI_AGENT: {
             idFromName: (name: string) => ({ toString: () => `id-${name}` }),
-            get: (id: any) => ({ fetch: (req: any) => new Response("ok") }),
-        } as any
+            get: (_id: unknown) => ({ fetch: (_req: Request) => new Response("ok") }),
+        } as unknown as DurableObjectNamespace
     };
 
     // mock mcp connections
@@ -60,41 +73,41 @@ export class MockAgent {
     };
 
     server = {
-        registerTool: (name: string, opts: any, handler: any) => {
+        registerTool: (name: string, opts: { inputSchema: Tool["inputSchema"] }, handler: ToolHandler) => {
             this.tools.set(name, { schema: opts.inputSchema, handler });
         }
     };
 
     ai = {
         run: async () => ({ response: typeof this.aiResponse === 'function' ? this.aiResponse() : this.aiResponse }),
-        aiManager: null as any
+        aiManager: null as unknown as any
     };
 
-    sql<T>(strings: TemplateStringsArray, ...values: any[]): T[] {
+    sql<T>(strings: TemplateStringsArray, ...values: unknown[]): T[] {
         const query = strings.join("?");
-        if (query.includes("COUNT(*)")) return [{ count: this.history.length }] as any;
+        if (query.includes("COUNT(*)")) return [{ count: this.history.length }] as unknown as T[];
         if (query.includes("mcp_servers")) {
             if (query.includes("DELETE")) {
-                const id = values[0];
+                const id = values[0] as string;
                 this.servers = this.servers.filter(s => s.id !== id);
-                return [] as any;
+                return [] as unknown as T[];
             }
             if (query.includes("INSERT")) {
-                const [id, url, name] = values;
+                const [id, url, name] = values as [string, string, string];
                 this.saveServer(id, url, name);
-                return [] as any;
+                return [] as unknown as T[];
             }
-            return this.servers as any;
+            return this.servers as unknown as T[];
         }
         if (query.includes("INSERT INTO messages")) {
-            const [role, content] = values;
+            const [role, content] = values as [MessageRole, string];
             this.saveMessage(role, content);
-            return [] as any;
+            return [] as unknown as T[];
         }
         if (query.includes("SELECT role, content FROM messages")) {
-            return this.history.map(m => ({ role: m.role, content: m.content })) as any;
+            return this.history.map(m => ({ role: m.role, content: m.content })) as unknown as T[];
         }
-        return [] as any;
+        return [] as unknown as T[];
     }
 
     model() { return this.state.selectedModel; }
@@ -148,11 +161,11 @@ export class MockAgent {
         }
     }
 
-    asAgent() {
-        return this as any as CfaiAgent;
+    asAgent(): CfaiAgent {
+        return this as unknown as CfaiAgent;
     }
 
-    async callHandler(name: string, args: any = {}) {
+    async callHandler(name: string, args: Record<string, unknown> = {}) {
         const tool = this.tools.get(name);
         if (!tool) throw new Error(`Tool not registered: ${name}`);
         return tool.handler(args);

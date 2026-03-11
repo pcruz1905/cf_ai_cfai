@@ -102,8 +102,8 @@ describe("runInference", () => {
       description: "fails when all models return empty response",
       effect: runInference(mockAi({ response: "" }), msg),
       layers: Layer.empty,
-      assert: (e: any) => {
-        expect(e.message).toContain("empty response");
+      assert: (e) => {
+        expect((e as Error).message).toContain("empty response");
       },
     }),
 
@@ -112,13 +112,13 @@ describe("runInference", () => {
       effect: Effect.gen(function* () {
         const ai: Ai = {
           run: async () => { throw new Error("hard fail"); },
-          aiManager: null as any
-        } as any as Ai;
+          aiManager: null as unknown as any
+        } as unknown as Ai;
         return yield* runInference(ai, msg);
       }),
       layers: Layer.empty,
-      assert: (e: any) => {
-        expect(e.message).toContain("hard fail");
+      assert: (e) => {
+        expect((e as Error).message).toContain("hard fail");
       },
     }),
   ]);

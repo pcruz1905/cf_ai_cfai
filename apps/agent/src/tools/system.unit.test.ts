@@ -35,12 +35,12 @@ describe("system tools", () => {
                 return { mock, res };
             }),
             layers: Layer.empty,
-            assert: ({ mock, res }: { mock: MockAgent; res: any }) => {
+            assert: ({ mock, res }) => {
                 expect(mock.tracked).toContain("help");
-                expect(res.content[0].text).toContain("cfai — MCP Gateway");
-                expect(res.content[0].text).toContain("AI Tools");
-                expect(res.content[0].text).toContain("Gateway");
-                expect(res.content[0].text).toContain("Model & Session");
+                expect(res.content[0]?.text).toContain("cfai — MCP Gateway");
+                expect(res.content[0]?.text).toContain("AI Tools");
+                expect(res.content[0]?.text).toContain("Gateway");
+                expect(res.content[0]?.text).toContain("Model & Session");
             },
         }),
 
@@ -55,8 +55,8 @@ describe("system tools", () => {
             }),
             layers: Layer.empty,
             assert: (res) => {
-                expect(res.content[0].text).toContain("AI Tools");
-                expect(res.content[0].text).not.toContain("🔌 Gateway");
+                expect(res.content[0]?.text).toContain("AI Tools");
+                expect(res.content[0]?.text).not.toContain("🔌 Gateway");
             },
         }),
 
@@ -72,10 +72,10 @@ describe("system tools", () => {
                 return { mock, res };
             }),
             layers: Layer.empty,
-            assert: ({ mock, res }: { mock: MockAgent; res: any }) => {
+            assert: ({ mock, res }) => {
                 expect(mock.tracked).toContain("set_model");
                 expect(mock.state.selectedModel).toBe("@cf/meta/llama-3.1-8b-instruct");
-                expect(res.content[0].text).toContain(
+                expect(res.content[0]?.text).toContain(
                     "Model set to: @cf/meta/llama-3.1-8b-instruct",
                 );
             },
@@ -92,9 +92,9 @@ describe("system tools", () => {
                 return { mock, res };
             }),
             layers: Layer.empty,
-            assert: ({ mock, res }: { mock: MockAgent; res: any }) => {
+            assert: ({ mock, res }) => {
                 expect(mock.tracked).toContain("get_model");
-                expect(res.content[0].text).toContain("Current model: test-model");
+                expect(res.content[0]?.text).toContain("Current model: test-model");
             },
         }),
 
@@ -114,9 +114,9 @@ describe("system tools", () => {
                 return { mock, res };
             }),
             layers: Layer.empty,
-            assert: ({ mock, res }: { mock: MockAgent; res: any }) => {
+            assert: ({ mock, res }) => {
                 expect(mock.tracked).toContain("session_stats");
-                const text = res.content[0].text;
+                const text = res.content[0]?.text ?? "";
                 expect(text).toContain("Model: stats-model");
                 expect(text).toContain("Total requests: 4");
                 expect(text).toContain("Conversation messages stored: 1");
@@ -145,8 +145,8 @@ describe("system tools", () => {
                 return res;
             }),
             layers: Layer.empty,
-            assert: (res: any) => {
-                const text = res.content[0].text;
+            assert: (res) => {
+                const text = res.content[0]?.text ?? "";
                 // Total is 2: 1 initial state (mock.totalRequests = 1) + 1 from tracking session_stats call itself
                 expect(text).toContain("Total requests: 2");
                 expect(text).not.toContain("By tool:");

@@ -14,14 +14,11 @@ export type Message = {
   content: string;
 };
 
-/** The subset of Ai.run we actually use — avoids casting the model string. */
-type AiTextModel = Parameters<Ai["run"]>[0];
-
 /** Parse a Workers AI response into a string. */
 function extractResponse(raw: unknown): string | undefined {
   if (typeof raw === "string") return raw;
   if (typeof raw === "object" && raw !== null && "response" in raw) {
-    const obj = raw as Record<string, unknown>;
+    const obj = raw as { response?: unknown };
     if (typeof obj.response === "string" && obj.response) return obj.response;
   }
   return undefined;
@@ -34,7 +31,8 @@ const callModel = Effect.fn("CfaiAgent.callModel")(function* (
   model: string,
 ) {
   const raw = yield* Effect.tryPromise({
-    try: () => ai.run(model as AiTextModel, { messages } as any),
+    // Use the first overload of Ai.run (text inference)
+    try: () => ai.run(model as Parameters<Ai["run"]>[0], { messages }),
     catch: (e) => new WorkersAiError({ message: `[${model}] ${String(e)}` }),
   });
 

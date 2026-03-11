@@ -39,9 +39,9 @@ describe("ai tools", () => {
                 return { mock, res };
             }),
             layers: Layer.empty,
-            assert: ({ mock, res }: { mock: MockAgent; res: any }) => {
+            assert: ({ mock, res }) => {
                 expect(mock.tracked).toContain("ask_llm");
-                expect(res.content[0].text).toBe("llm response");
+                expect(res.content[0]?.text).toBe("llm response");
                 expect(mock.history.map((h) => h.content)).toContain("old message");
                 expect(mock.history.map((h) => h.content)).toContain("new question");
                 expect(mock.history.map((h) => h.content)).toContain("llm response");
@@ -62,9 +62,9 @@ describe("ai tools", () => {
                 return { mock, res };
             }),
             layers: Layer.empty,
-            assert: ({ mock, res }: { mock: MockAgent; res: any }) => {
+            assert: ({ mock, res }) => {
                 expect(mock.tracked).toContain("explain_error");
-                expect(res.content[0].text).toBe("explained");
+                expect(res.content[0]?.text).toBe("explained");
             },
         }),
 
@@ -79,9 +79,9 @@ describe("ai tools", () => {
                 return { mock, res };
             }),
             layers: Layer.empty,
-            assert: ({ mock, res }: { mock: MockAgent; res: any }) => {
+            assert: ({ mock, res }) => {
                 expect(mock.tracked).toContain("explain_error");
-                expect(res.content[0].text).toBe("explained no context");
+                expect(res.content[0]?.text).toBe("explained no context");
             },
         }),
 
@@ -96,9 +96,9 @@ describe("ai tools", () => {
                 return { mock, res };
             }),
             layers: Layer.empty,
-            assert: ({ mock, res }: { mock: MockAgent; res: any }) => {
+            assert: ({ mock, res }) => {
                 expect(mock.tracked).toContain("summarize");
-                expect(res.content[0].text).toBe("summary");
+                expect(res.content[0]?.text).toBe("summary");
             },
         }),
 
@@ -116,8 +116,8 @@ describe("ai tools", () => {
                 return res;
             }),
             layers: Layer.empty,
-            assert: (res: any) => {
-                expect(res.content[0].text).toBe("summary tables");
+            assert: (res) => {
+                expect(res.content[0]?.text).toBe("summary tables");
             },
         }),
 
@@ -132,9 +132,9 @@ describe("ai tools", () => {
                 return { mock, res };
             }),
             layers: Layer.empty,
-            assert: ({ mock, res }: { mock: MockAgent; res: any }) => {
+            assert: ({ mock, res }) => {
                 expect(mock.tracked).toContain("generate_commit");
-                expect(res.content[0].text).toBe("feat: initial commit");
+                expect(res.content[0]?.text).toBe("feat: initial commit");
             },
         }),
 
@@ -153,9 +153,9 @@ describe("ai tools", () => {
                 return { mock, res };
             }),
             layers: Layer.empty,
-            assert: ({ mock, res }: { mock: MockAgent; res: any }) => {
+            assert: ({ mock, res }) => {
                 expect(mock.tracked).toContain("translate");
-                expect(res.content[0].text).toBe("hola");
+                expect(res.content[0]?.text).toBe("hola");
             },
         }),
 
@@ -173,8 +173,8 @@ describe("ai tools", () => {
                 return res;
             }),
             layers: Layer.empty,
-            assert: (res: any) => {
-                expect(res.content[0].text).toBe("hola auto");
+            assert: (res) => {
+                expect(res.content[0]?.text).toBe("hola auto");
             },
         }),
 
@@ -193,9 +193,9 @@ describe("ai tools", () => {
                 return { mock, res };
             }),
             layers: Layer.empty,
-            assert: ({ mock, res }: { mock: MockAgent; res: any }) => {
+            assert: ({ mock, res }) => {
                 expect(mock.tracked).toContain("review_code");
-                expect(res.content[0].text).toBe("looks good");
+                expect(res.content[0]?.text).toBe("looks good");
             },
         }),
 
@@ -210,8 +210,8 @@ describe("ai tools", () => {
                 return res;
             }),
             layers: Layer.empty,
-            assert: (res: any) => {
-                expect(res.content[0].text).toBe("looks fine");
+            assert: (res) => {
+                expect(res.content[0]?.text).toBe("looks fine");
             },
         }),
     ]);

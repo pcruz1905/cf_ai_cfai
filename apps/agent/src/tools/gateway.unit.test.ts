@@ -36,14 +36,14 @@ describe("gateway tools", () => {
                 return { mock, res };
             }),
             layers: Layer.empty,
-            assert: ({ mock, res }: { mock: MockAgent; res: any }) => {
+            assert: ({ mock, res }) => {
                 expect(mock.tracked).toContain("add_server");
                 expect(mock.servers.length).toBe(1);
                 expect(mock.servers[0]!.url).toBe("https://api.githubcopilot.com/mcp/");
                 expect(mock.servers[0]!.name).toBe("GitHub");
-                expect(res.content[0].text).toContain('Connected to "GitHub"');
+                expect(res.content?.[0]?.text).toContain('Connected to "GitHub"');
                 expect(mock.broadcasted).toHaveLength(1);
-                expect(mock.broadcasted[0].type).toBe("server_connected");
+                expect(mock.broadcasted[0]?.type).toBe("server_connected");
             },
         }),
 
@@ -57,8 +57,8 @@ describe("gateway tools", () => {
                 return { mock, res };
             }),
             layers: Layer.empty,
-            assert: ({ mock, res }: { mock: MockAgent; res: any }) => {
-                expect(res.content[0].text).toContain('Unknown preset "nonexistent"');
+            assert: ({ mock, res }) => {
+                expect(res.content[0]?.text).toContain('Unknown preset "nonexistent"');
                 expect(mock.servers.length).toBe(0);
             },
         }),
@@ -76,11 +76,11 @@ describe("gateway tools", () => {
                 return { mock, res };
             }),
             layers: Layer.empty,
-            assert: ({ mock, res }: { mock: MockAgent; res: any }) => {
+            assert: ({ mock, res }) => {
                 expect(mock.servers.length).toBe(1);
                 expect(mock.servers[0]!.url).toBe("http://example.com/sse");
                 expect(mock.servers[0]!.name).toBe("Custom");
-                expect(res.content[0].text).toContain("Connected to");
+                expect(res.content[0]?.text).toContain("Connected to");
             },
         }),
 
@@ -94,8 +94,8 @@ describe("gateway tools", () => {
                 return res;
             }),
             layers: Layer.empty,
-            assert: (res: any) => {
-                expect(res.content[0].text).toContain(
+            assert: (res) => {
+                expect(res.content[0]?.text).toContain(
                     "Provide either a 'url' or a 'preset' name",
                 );
             },
@@ -114,8 +114,8 @@ describe("gateway tools", () => {
                 return res;
             }),
             layers: Layer.empty,
-            assert: (res: any) => {
-                expect(res.content[0].text).toContain(
+            assert: (res) => {
+                expect(res.content[0]?.text).toContain(
                     "Failed to connect to http://fail.com",
                 );
             },
@@ -132,10 +132,10 @@ describe("gateway tools", () => {
                 return { mock, res };
             }),
             layers: Layer.empty,
-            assert: ({ mock, res }: { mock: MockAgent; res: any }) => {
+            assert: ({ mock, res }) => {
                 expect(mock.tracked).toContain("remove_server");
                 expect(mock.servers.length).toBe(0);
-                expect(res.content[0].text).toContain("Removed server abc");
+                expect(res.content[0]?.text).toContain("Removed server abc");
             },
         }),
 
@@ -149,8 +149,8 @@ describe("gateway tools", () => {
                 return res;
             }),
             layers: Layer.empty,
-            assert: (res: any) => {
-                expect(res.content[0].text).toContain("No upstream servers configured");
+            assert: (res) => {
+                expect(res.content[0]?.text).toContain("No upstream servers configured");
             },
         }),
 
@@ -165,9 +165,9 @@ describe("gateway tools", () => {
                 return res;
             }),
             layers: Layer.empty,
-            assert: (res: any) => {
-                expect(res.content[0].text).toContain("Server A");
-                expect(res.content[0].text).toContain("abc");
+            assert: (res) => {
+                expect(res.content[0]?.text).toContain("Server A");
+                expect(res.content[0]?.text).toContain("abc");
             },
         }),
 
@@ -181,8 +181,8 @@ describe("gateway tools", () => {
                 return res;
             }),
             layers: Layer.empty,
-            assert: (res: any) => {
-                expect(res.content[0].text).toContain("No upstream tools available");
+            assert: (res) => {
+                expect(res.content[0]?.text).toContain("No upstream tools available");
             },
         }),
 
@@ -199,9 +199,9 @@ describe("gateway tools", () => {
                 return res;
             }),
             layers: Layer.empty,
-            assert: (res: any) => {
-                expect(res.content[0].text).toContain("toolA [abc]");
-                expect(res.content[0].text).toContain("desc A");
+            assert: (res) => {
+                expect(res.content[0]?.text).toContain("toolA [abc]");
+                expect(res.content[0]?.text).toContain("desc A");
             },
         }),
 
@@ -219,9 +219,9 @@ describe("gateway tools", () => {
                 return { mock, res };
             }),
             layers: Layer.empty,
-            assert: ({ mock, res }: { mock: MockAgent; res: any }) => {
+            assert: ({ mock, res }) => {
                 expect(mock.tracked).toContain("call_upstream_tool");
-                expect(res.content[0].text).toBe("mock upstream result");
+                expect(res.content[0]?.text).toBe("mock upstream result");
             },
         }),
 
@@ -241,8 +241,8 @@ describe("gateway tools", () => {
                 return res;
             }),
             layers: Layer.empty,
-            assert: (res: any) => {
-                expect(res.content[0].text).toContain("❌ Tool call failed");
+            assert: (res) => {
+                expect(res.content[0]?.text).toContain("❌ Tool call failed");
             },
         }),
 
@@ -264,8 +264,8 @@ describe("gateway tools", () => {
                 return res;
             }),
             layers: Layer.empty,
-            assert: (res: any) => {
-                const text = res.content[0].text;
+            assert: (res) => {
+                const text = res.content[0]?.text ?? "";
                 expect(text).toContain("Tools discovered (2)");
                 expect(text).toContain("• tool1 — desc1");
                 expect(text).toContain("• tool2");
@@ -297,11 +297,11 @@ describe("gateway tools", () => {
                 return { listRes, toolListRes, callRes };
             }),
             layers: Layer.empty,
-            assert: (value: any) => {
-                const { listRes, toolListRes, callRes } = value as { listRes: any; toolListRes: any; callRes: any };
-                expect(listRes.content[0].text).toContain("http://edge.com");
-                expect(toolListRes.content[0].text).toContain("(no description)");
-                expect(callRes.content[0].text).toContain('{"raw":"data"}');
+            assert: (value) => {
+                const { listRes, toolListRes, callRes } = value as { listRes: { content: Array<{text: string}> }; toolListRes: { content: Array<{text: string}> }; callRes: { content: Array<{text: string}> } };
+                expect(listRes.content[0]?.text).toContain("http://edge.com");
+                expect(toolListRes.content[0]?.text).toContain("(no description)");
+                expect(callRes.content[0]?.text).toContain('{"raw":"data"}');
             },
         }),
 
@@ -321,8 +321,8 @@ describe("gateway tools", () => {
                 return res;
             }),
             layers: Layer.empty,
-            assert: (res: any) => {
-                const text = res.content[0].text;
+            assert: (res) => {
+                const text = res.content[0]?.text ?? "";
                 expect(text).toContain("Tools discovered (0)");
                 expect(text).toContain("  (no tools discovered yet)");
             },
