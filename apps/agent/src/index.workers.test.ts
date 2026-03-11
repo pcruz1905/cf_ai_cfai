@@ -173,3 +173,119 @@ describe("MCP initialize", () => {
     expect(body).toContain("Mcp-Session-Id header is required");
   });
 });
+
+// ── MCP Tools ────────────────────────────────────────────────────────────────
+
+describe("MCP tools execution", () => {
+  const mcpHeaders = {
+    "content-type": "application/json",
+    accept: "application/json, text/event-stream",
+  };
+
+  /**
+   * Helper: initialise a session and call a tool in one go.
+   *
+   * McpAgent.serve (Streamable HTTP) creates a **new** SSE stream per POST.
+   * - POST without `mcp-session-id` + an `initialize` body → creates a session
+   *     and returns `mcp-session-id` in the response header.
+   * - POST with `mcp-session-id` + a `tools/call` body → runs the tool and
+   *     returns the JSON-RPC result via SSE.
+   *
+   * In miniflare the DO storage only lives within a single execution context,
+   * so we must initialise **and** call the tool inside the same test.
+   */
+  async function initAndCallTool(
+    toolName: string,
+    args: Record<string, unknown> = {},
+  ) {
+    // 1. Initialise
+    const initRes = await workerFetch(
+      new Request("http://localhost/mcp", {
+        method: "POST",
+        headers: mcpHeaders,
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2024-11-05",
+            capabilities: {},
+            clientInfo: { name: "vitest", version: "0.0.1" },
+          },
+        }),
+      }),
+    );
+
+    expect(initRes.status).toBe(200);
+    const sessionId = initRes.headers.get("mcp-session-id");
+    expect(sessionId).toBeTruthy();
+
+    // 2. Call the tool using the session we just created
+    const toolRes = await workerFetch(
+      new Request("http://localhost/mcp", {
+        method: "POST",
+        headers: {
+          ...mcpHeaders,
+          "mcp-session-id": sessionId!,
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: { name: toolName, arguments: args },
+        }),
+      }),
+    );
+
+    // A successful tool invocation returns 200 with an SSE stream.
+    // Protocol-level errors (bad session, bad method) return 4xx **before**
+    // the stream is created, so a 200 here proves the tool was dispatched.
+    expect(toolRes.status).toBe(200);
+    expect(toolRes.headers.get("content-type")).toContain("text/event-stream");
+    return toolRes;
+  }
+
+  it("calls ask_llm successfully", async () => {
+    await initAndCallTool("ask_llm", { question: "What is 1+1?" });
+  });
+
+  it("calls explain_error successfully", async () => {
+    await initAndCallTool("explain_error", {
+      error: "SyntaxError: Unexpected token",
+      context: "const x =",
+    });
+  });
+
+  it("calls summarize successfully", async () => {
+    await initAndCallTool("summarize", {
+      content: "Long text that needs summarising.",
+      format: "bullets",
+    });
+  });
+
+  it("calls generate_commit successfully", async () => {
+    await initAndCallTool("generate_commit", {
+      diff: "+ console.log('hello world')",
+    });
+  });
+
+  it("calls translate successfully", async () => {
+    await initAndCallTool("translate", {
+      text: "Hello",
+      target: "Spanish",
+      source: "English",
+    });
+  });
+
+  it("calls review_code successfully", async () => {
+    await initAndCallTool("review_code", {
+      code: "function fn() { return; }",
+      language: "javascript",
+      focus: "style",
+    });
+  });
+
+  it("calls session_stats successfully", async () => {
+    await initAndCallTool("session_stats");
+  });
+});
