@@ -10,18 +10,22 @@
     "types": "wrangler types",
     "test": "vitest",
     "test:unit": "vitest --project unit",
-    "test:workers": "vitest --project workers"
+    "test:workers": "vitest --project workers",
+    "test:coverage": "vitest run --coverage --project unit"
   },
   "dependencies": {
+    "@effect/platform": "catalog:",
+    "@modelcontextprotocol/sdk": "1.27.1",
     "agents": "^0.0.74",
     "effect": "catalog:",
-    "@effect/platform": "catalog:",
-    "zod": "^3.24.2"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.12.20",
     "@cloudflare/workers-types": "catalog:",
     "@effect/vitest": "catalog:",
+    "@types/node": "^20.11.1",
+    "@vitest/coverage-istanbul": "catalog:",
     "typescript": "^5.9.3",
     "vitest": "catalog:",
     "wrangler": "^4.71.0"

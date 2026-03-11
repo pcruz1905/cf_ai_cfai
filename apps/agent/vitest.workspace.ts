@@ -3,26 +3,25 @@ import { defineWorkersProject } from "@cloudflare/vitest-pool-workers/config";
 import baseConfig from "./vitest.config";
 
 export default [
-  // Unit tests (Node environment)
+  // Unit tests — run in Node, no Cloudflare bindings needed
   mergeConfig(
     baseConfig,
     defineProject({
       test: {
         name: "unit",
-        include: ["src/**/*.test.ts"],
-        exclude: ["src/**/*.test.ts"],
+        include: ["src/**/*.unit.test.ts"],
         environment: "node",
       },
     }),
   ),
 
-  // Workers tests (Cloudflare Workers environment)
+  // Workers tests — run in Cloudflare Workers (miniflare) with real bindings
   mergeConfig(
     baseConfig,
     defineWorkersProject({
       test: {
         name: "workers",
-        include: ["src/.test.ts"],
+        include: ["src/**/*.workers.test.ts"],
         poolOptions: {
           workers: {
             wrangler: { configPath: "./wrangler.jsonc" },

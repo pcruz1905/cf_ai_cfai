@@ -2,14 +2,13 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "types": ["@cloudflare/workers-types"],
+    "types": ["@cloudflare/workers-types", "@cloudflare/vitest-pool-workers"],
     "composite": false,
     "emitDeclarationOnly": false,
     "declarationMap": false,
     "paths": {
-      "@testConfig/*": ["./testConfig/*"],
+      "@testConfig/*": ["./testConfig/*"]
     }
   },
-  "include": ["src/**/*", "testConfig/**/*"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/*TestFixtures.ts", "src/**/*TestLayers.ts"]
+  "include": ["src/**/*", "testConfig/**/*"]
 }
