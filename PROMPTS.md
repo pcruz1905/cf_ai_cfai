@@ -45,3 +45,7 @@ fix the CI — vitest with @cloudflare/vitest-pool-workers keeps failing with "F
 ### Prompt 5 — UX Improvements
 
 make it easier to connect to mcp servers and add a help tool so new users know what's available. when adding a custom server show me what tools were discovered right away
+
+### Prompts ... — Testing and Coverage
+
+This prompts were dedicated to enhancing test quality and improving code coverage across the application.
