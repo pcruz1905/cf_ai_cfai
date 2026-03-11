@@ -7,13 +7,14 @@ import type { Message } from "./ai";
 const msg: Message[] = [{ role: "user", content: "hello" }];
 
 const mockAi = (result: unknown): Ai =>
-  ({ run: async () => result }) as unknown as Ai;
+  ({ run: async () => result, aiManager: null as any }) as any as Ai;
 
 const throwingAi: Ai = {
   run: async () => {
     throw new Error("network error");
   },
-} as unknown as Ai;
+  aiManager: null as any
+} as any as Ai;
 
 describe("runInference", () => {
   makeTests([
@@ -66,7 +67,7 @@ describe("runInference", () => {
       effect: runInference(
         {
           run: async (model: string) => ({ response: `used:${model}` }),
-        } as unknown as Ai,
+        } as any as Ai,
         msg,
         "@cf/meta/llama-3.1-8b-instruct",
       ),

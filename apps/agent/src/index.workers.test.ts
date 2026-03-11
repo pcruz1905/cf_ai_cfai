@@ -6,6 +6,7 @@ import {
   waitOnExecutionContext,
 } from "cloudflare:test";
 import worker from "./index.js";
+import type { Env } from "./index.js";
 
 /**
  * Workers integration tests — run with: pnpm test:workers
@@ -22,9 +23,13 @@ import worker from "./index.js";
  * streaming responses, and read the body for synchronous error responses.
  */
 
+// Miniflare's ProvidedEnv contains all bindings declared in wrangler.test.jsonc.
+// We narrow it to our Env type for proper type checking.
+const testEnv = env as Env;
+
 async function workerFetch(request: Request) {
   const ctx = createExecutionContext();
-  const response = await worker.fetch(request, env, ctx);
+  const response = await worker.fetch(request, testEnv, ctx);
   // waitOnExecutionContext returns without blocking on open SSE streams.
   // For non-streaming error responses the body is immediately readable after.
   await waitOnExecutionContext(ctx);
